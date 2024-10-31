@@ -1,0 +1,31 @@
+name: On release
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile.build --output type=local,dest=out/ .
+          for filename in out/**/*.tar.gz out/**/*.whl; do
+            [ -e "$filename" ] || continue
+            gh release upload ${{github.event.release.tag_name}} "$filename"
+          done
+        env:
+          GITHUB_TOKEN: ${{ github.TOKEN }}
+        shell: bash
+
