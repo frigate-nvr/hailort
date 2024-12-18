@@ -1,4 +1,4 @@
-FROM debian:11 AS build
+FROM debian:11 AS hailort
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TARGETARCH
 
@@ -14,17 +14,8 @@ RUN apt-get -qq update \
     tee /etc/apt/sources.list.d/debian-bullseye-nonfree.list \
     && apt-get -qq update \
     && apt-get -qq install -y \
-    python3.9 \
-    python3.9-dev \
-    python3.9-distutils \
     build-essential cmake git \
     && rm -rf /var/lib/apt/lists/*
-
-# Ensure python3 defaults to python3.9
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
-
-RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
-    && python3 get-pip.py "pip"
 
 COPY . /source
 
@@ -35,15 +26,67 @@ RUN cd /source && \
     cmake --build build --config release --target hailortcli && \
     cmake --build build --config release --target install
 
-# Create a wheel file using pip3 wheel
-RUN cd /source/hailort/libhailort/bindings/python/platform && \
-    python3 setup.py bdist_wheel --dist-dir /package
-
 # Create rootfs
-RUN mkdir -p /rootfs/usr/local/lib /rootfs/usr/local/bin && \
+RUN mkdir -p /rootfs/usr/local/lib /rootfs/usr/local/bin /package && \
     cp /usr/local/lib/libhailort.so* /rootfs/usr/local/lib && \
     cp /usr/local/bin/hailortcli /rootfs/usr/local/bin && \
     tar -czf /package/hailort-${TARGETARCH}.tar.gz /rootfs
 
+FROM hailort AS py39-wheels
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get -qq update \
+    && apt-get -qq install -y \
+    python3.9 \
+    python3.9-dev \
+    python3.9-distutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ensure python3 defaults to python3.9
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
+
+RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+    && python3 get-pip.py "pip"
+
+# Create a wheel file using pip3 wheel
+RUN cd /source/hailort/libhailort/bindings/python/platform && \
+    python3 setup.py bdist_wheel --dist-dir /wheels
+
+FROM hailort AS py311-wheels
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PYTHON_VERSION=3.11.11
+
+RUN apt-get -qq update \
+    && apt-get -qq install -y \
+    zlib1g-dev \
+    libncurses5-dev \
+    libgdbm-dev \ 
+    libnss3-dev \
+    libssl-dev \
+    libreadline-dev \
+    libffi-dev \
+    libsqlite3-dev \
+    libbz2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN cd /usr/src \
+    && wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz \
+    && tar -xzf Python-${PYTHON_VERSION}.tgz \
+    && cd Python-${PYTHON_VERSION} \
+    && ./configure --enable-optimizations \
+    && make altinstall
+
+# Ensure python3 defaults to python3.11
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.11 1
+
+RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+    && python3 get-pip.py "pip"
+
+# Create a wheel file using pip3 wheel
+RUN cd /source/hailort/libhailort/bindings/python/platform && \
+    python3 setup.py bdist_wheel --dist-dir /wheels
+
 FROM scratch AS package
-COPY --from=build /package /
+COPY --from=hailort /package /
+COPY --from=py39-wheels /wheels /
+COPY --from=py311-wheels /wheels /
