@@ -1,4 +1,4 @@
-FROM debian:11 AS hailort
+FROM ubuntu:jammy AS hailort
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TARGETARCH
 
@@ -7,14 +7,10 @@ RUN apt-get -qq update \
     apt-transport-https \
     gnupg \
     wget \
-    # the key fingerprint can be obtained from https://ftp-master.debian.org/keys.html
-    && wget -qO- "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xA4285295FC7B1A81600062A9605C66F00D6C9793" | \
-    gpg --dearmor > /usr/share/keyrings/debian-archive-bullseye-stable.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/debian-archive-bullseye-stable.gpg] http://deb.debian.org/debian bullseye main contrib non-free" | \
-    tee /etc/apt/sources.list.d/debian-bullseye-nonfree.list \
     && apt-get -qq update \
     && apt-get -qq install -y \
     build-essential cmake git \
+    software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /source
@@ -35,11 +31,9 @@ RUN mkdir -p /rootfs/usr/local/lib /rootfs/usr/local/bin /package && \
 FROM hailort AS py39-wheels
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get -qq update \
-    && apt-get -qq install -y \
-    python3.9 \
-    python3.9-dev \
-    python3.9-distutils \
+RUN add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get -qq update \
+    && apt-get -qq install -y python3.9 python3.9-dev python3.9-distutils \
     && rm -rf /var/lib/apt/lists/*
 
 # Ensure python3 defaults to python3.9
@@ -54,30 +48,14 @@ RUN cd /source/hailort/libhailort/bindings/python/platform && \
 
 FROM hailort AS py311-wheels
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.11.11
 
-RUN apt-get -qq update \
-    && apt-get -qq install -y \
-    zlib1g-dev \
-    libncurses5-dev \
-    libgdbm-dev \ 
-    libnss3-dev \
-    libssl-dev \
-    libreadline-dev \
-    libffi-dev \
-    libsqlite3-dev \
-    libbz2-dev \
+RUN add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get -qq update \
+    && apt-get -qq install -y python3.11 python3.11-dev python3.11-distutils \
     && rm -rf /var/lib/apt/lists/*
 
-RUN cd /usr/src \
-    && wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz \
-    && tar -xzf Python-${PYTHON_VERSION}.tgz \
-    && cd Python-${PYTHON_VERSION} \
-    && ./configure --enable-optimizations \
-    && make altinstall
-
 # Ensure python3 defaults to python3.11
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/local/bin/python3.11 1
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
 RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
     && python3 get-pip.py "pip"
