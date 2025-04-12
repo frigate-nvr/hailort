@@ -1,0 +1,3 @@
+[submodule "hailort"]
+	path = hailort
+	url = https://github.com/hailo-ai/hailort

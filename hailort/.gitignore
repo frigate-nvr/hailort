@@ -1,5 +1,0 @@
-build/
-build-*x86_64/
-build-*aarch64/
-dist/
-/external/
